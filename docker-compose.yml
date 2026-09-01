@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: medical-service-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: service_db
+    ports:
+      - "5432:5432"
+    volumes:
+      # UPDATED: Correct path to your schema.sql
+      - ./backend/src/config/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer
+    container_name: medical-service-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

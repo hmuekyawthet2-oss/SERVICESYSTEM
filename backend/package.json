@@ -1,0 +1,29 @@
+{
+  "name": "medical-equipment-service-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Medical Equipment Service Data Entry System",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "db:init": "psql -U postgres -d service_db -f src/config/schema.sql",
+    "db:reset": "psql -U postgres -c 'DROP DATABASE IF EXISTS service_db;' && psql -U postgres -c 'CREATE DATABASE service_db;' && npm run db:init",
+    "db:seed": "node src/config/seed.js",
+    "test": "jest --forceExit --detectOpenHandles"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-validator": "^7.2.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.10.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.7"
+  }
+}
