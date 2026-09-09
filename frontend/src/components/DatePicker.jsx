@@ -97,6 +97,27 @@ export default function DatePicker({ value, onChange, placeholder = 'Select date
   const yearRange = [];
   for (let y = viewYear - 5; y <= viewYear + 5; y++) yearRange.push(y);
 
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 6, left: rect.left });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      updatePosition();
+      window.addEventListener('scroll', updatePosition, true);
+      window.addEventListener('resize', updatePosition);
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true);
+        window.removeEventListener('resize', updatePosition);
+      };
+    }
+  }, [open, updatePosition]);
+
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       {/* Trigger Button */}
@@ -119,9 +140,13 @@ export default function DatePicker({ value, onChange, placeholder = 'Select date
         )}
       </button>
 
-      {/* Calendar Dropdown */}
+      {/* Calendar Dropdown — fixed positioned to escape overflow clipping */}
       {open && (
-        <div className="absolute z-30 mt-1.5 bg-white rounded-xl border border-gray-200 shadow-xl p-3 w-[280px] select-none" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="z-[9999] bg-white rounded-xl border border-gray-200 shadow-xl p-3 w-[280px] select-none"
+          style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left }}
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Month/Year Navigation */}
           <div className="flex items-center justify-between mb-3">
             <button type="button" onClick={prevMonth}

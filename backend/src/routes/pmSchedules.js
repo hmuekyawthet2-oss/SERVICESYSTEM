@@ -182,18 +182,19 @@ router.get('/summary', async (req, res) => {
 router.put('/:id/complete', async (req, res) => {
   try {
     const { id } = req.params;
-    const { completed_by, notes } = req.body;
+    const { completed_by, notes, action_date } = req.body;
 
     const result = await pool.query(
       `UPDATE pm_schedules
        SET status = 'Completed',
            completed_date = CURRENT_DATE,
            completed_by = $1,
-           notes = COALESCE($2, notes),
+           action_date = $2,
+           notes = COALESCE($3, notes),
            updated_at = NOW()
-       WHERE id = $3
+       WHERE id = $4
        RETURNING *`,
-      [completed_by || null, notes || null, id]
+      [completed_by || null, action_date || null, notes || null, id]
     );
 
     if (result.rows.length === 0) {

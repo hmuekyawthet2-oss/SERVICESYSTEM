@@ -455,7 +455,7 @@ export default function MachineFormPage() {
                   <h3 className="font-medium text-blue-900 text-sm mb-2">{label}</h3>
                   <div className="space-y-1 text-sm">
                     <p><span className="text-gray-500">PM Date:</span> <strong>{formatDateDisplay(data.pmDate)}</strong></p>
-                    <p><span className="text-gray-500">Window:</span> {formatDateDisplay(data.windowStart)} – {formatDateDisplay(data.windowEnd)}</p>
+                    <p><span className="text-gray-500">Period:</span> {formatDateDisplay(data.windowStart)} – {formatDateDisplay(data.windowEnd)}</p>
                   </div>
                 </div>
               ))}

@@ -26,7 +26,7 @@ const PORT = parseInt(process.env.PORT, 10) || 3001;
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? process.env.CORS_ORIGIN
+    ? (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean)
     : ['http://localhost:3000', 'http://localhost:5173'],
   credentials: true,
 }));
@@ -62,9 +62,11 @@ app.use((err, req, res, _next) => {
 });
 
 // ── Start Server ──────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`🏥 Medical Equipment Service API running on port ${PORT}`);
-  console.log(`   Health check: http://localhost:${PORT}/api/health`);
-});
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`Medical Equipment Service API running on port ${PORT}`);
+    console.log(`   Health check: http://localhost:${PORT}/api/health`);
+  });
+}
 
 module.exports = app;

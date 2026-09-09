@@ -337,6 +337,12 @@ router.put('/:id', authenticate, machineValidation, handleValidationErrors, asyn
 
     await client.query('BEGIN');
 
+    // Fetch current machine to detect installation_date change
+    const currentResult = await client.query('SELECT installation_date FROM machines WHERE id = $1', [id]);
+    const oldDate = currentResult.rows[0]?.installation_date;
+    const oldInstallationDate = oldDate ? new Date(oldDate).toISOString().split('T')[0] : null;
+    const installationDateChanged = oldInstallationDate && oldInstallationDate !== installation_date;
+
     const result = await client.query(
       `UPDATE machines SET
         hospital_name=$1, township_id=$2, contact_person=$3, contact_phone=$4,
@@ -354,6 +360,22 @@ router.put('/:id', authenticate, machineValidation, handleValidationErrors, asyn
     if (result.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Machine not found' });
+    }
+
+    // Auto-regenerate PM schedules if installation date changed
+    if (installationDateChanged) {
+      const pmSchedule = calculatePMSchedule(installation_date);
+      await client.query('DELETE FROM pm_schedules WHERE machine_id = $1', [id]);
+      await client.query(
+        `INSERT INTO pm_schedules (machine_id, pm_number, pm_date, window_start, window_end)
+         VALUES ($1, 1, $2, $3, $4)`,
+        [id, pmSchedule.pm1.pmDate, pmSchedule.pm1.windowStart, pmSchedule.pm1.windowEnd]
+      );
+      await client.query(
+        `INSERT INTO pm_schedules (machine_id, pm_number, pm_date, window_start, window_end)
+         VALUES ($1, 2, $2, $3, $4)`,
+        [id, pmSchedule.pm2.pmDate, pmSchedule.pm2.windowStart, pmSchedule.pm2.windowEnd]
+      );
     }
 
     // Update training dates: delete old, insert new

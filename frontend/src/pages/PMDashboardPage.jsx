@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { pmSchedulesApi } from '../services/api';
 import { formatDateDisplay } from '../utils/pmCalculator';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle, X, Trash2 } from 'lucide-react';
+import { CheckCircle, X, Trash2, Monitor, MapPin, Phone, User, Calendar, Clock, Tag } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import DatePicker from '../components/DatePicker';
 
@@ -26,9 +26,11 @@ export default function PMDashboardPage() {
   const { hasPermission } = useAuth();
   const [completeModal, setCompleteModal] = useState(null);
   const [completedBy, setCompletedBy] = useState('');
+  const [actionDate, setActionDate] = useState('');
   const [page, setPage] = useState(1);
   const canComplete = hasPermission('pm_dashboard', 'complete');
   const canDelete = hasPermission('pm_dashboard', 'delete');
+  const [selectedSchedule, setSelectedSchedule] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -53,9 +55,9 @@ export default function PMDashboardPage() {
   const handleComplete = async () => {
     if (!completeModal) return;
     try {
-      await pmSchedulesApi.complete(completeModal.id, { completed_by: completedBy });
+      await pmSchedulesApi.complete(completeModal.id, { completed_by: completedBy, action_date: actionDate || null });
       toast.success('PM completed');
-      setCompleteModal(null); setCompletedBy(''); fetchData();
+      setCompleteModal(null); setCompletedBy(''); setActionDate(''); fetchData();
     } catch { toast.error('Failed'); }
   };
 
@@ -71,6 +73,10 @@ export default function PMDashboardPage() {
   };
 
   const hasDateFilter = dateFrom || dateTo;
+
+  const handleRowClick = (schedule) => {
+    setSelectedSchedule(schedule);
+  };
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -173,7 +179,7 @@ export default function PMDashboardPage() {
               ) : paginatedSchedules.map((s) => {
                 const m = colorMeta[s.color] || colorMeta.gray;
                 return (
-                  <tr key={s.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={s.id} className="hover:bg-gray-50/50 transition-colors cursor-pointer" onClick={() => handleRowClick(s)}>
                     <td className="px-4 py-3">
                       <div className="font-medium text-gray-900 text-xs font-mono">{s.serial_number}</div>
                       <div className="text-xs text-gray-400">{s.brand_name} {s.model}</div>
@@ -228,17 +234,172 @@ export default function PMDashboardPage() {
                   <p className="text-xs text-gray-400">{completeModal.serial_number} — PM #{completeModal.pm_number}</p>
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Completed By</label>
-                <input value={completedBy} onChange={(e) => setCompletedBy(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all"
-                  placeholder="Technician name (optional)" autoFocus
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleComplete(); }} />
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Action Date <span className="text-red-400">*</span></label>
+                  <DatePicker value={actionDate} onChange={setActionDate} placeholder="Date PM was performed" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Engineer Name</label>
+                  <input value={completedBy} onChange={(e) => setCompletedBy(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all"
+                    placeholder="Technician / engineer name" autoFocus
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleComplete(); }} />
+                </div>
               </div>
             </div>
             <div className="px-6 py-4 bg-gray-50 flex justify-end gap-2">
-              <button onClick={() => { setCompleteModal(null); setCompletedBy(''); }} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
+              <button onClick={() => { setCompleteModal(null); setCompletedBy(''); setActionDate(''); }} className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
               <button onClick={handleComplete} className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* PM Detail Modal */}
+      {selectedSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setSelectedSchedule(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                  <Monitor className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">PM #{selectedSchedule.pm_number} — {selectedSchedule.serial_number}</h3>
+                  <p className="text-xs text-gray-400">{selectedSchedule.brand_name} {selectedSchedule.model}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedSchedule(null)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Status */}
+              {(() => {
+                const m = colorMeta[selectedSchedule.color] || colorMeta.gray;
+                return (
+                  <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${m.card}`}>
+                    <span className={`w-2.5 h-2.5 rounded-full ${m.dot}`}></span>
+                    <div>
+                      <span className={`text-sm font-semibold ${m.text}`}>{selectedSchedule.status_label || m.label}</span>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{m.desc}</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* PM Schedule */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">PM Schedule</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                      <p className="text-[10px] text-gray-400 font-medium uppercase">Target Date</p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800">{formatDateDisplay(selectedSchedule.pm_date)}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Clock className="w-3.5 h-3.5 text-gray-400" />
+                      <p className="text-[10px] text-gray-400 font-medium uppercase">Window Start</p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800">{formatDateDisplay(selectedSchedule.window_start)}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Clock className="w-3.5 h-3.5 text-gray-400" />
+                      <p className="text-[10px] text-gray-400 font-medium uppercase">Window End</p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800">{formatDateDisplay(selectedSchedule.window_end)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Machine Info */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Machine Information</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Tag className="w-3.5 h-3.5 text-gray-400" />
+                      <p className="text-[10px] text-gray-400 font-medium uppercase">Serial Number</p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800 font-mono">{selectedSchedule.serial_number}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-[10px] text-gray-400 font-medium uppercase">Type</p>
+                    <p className="text-sm font-semibold text-gray-800 mt-0.5">{selectedSchedule.machine_type_name || '—'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hospital & Contact */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Hospital & Contact</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                      <p className="text-[10px] text-gray-400 font-medium uppercase">Hospital</p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800">{selectedSchedule.hospital_name}</p>
+                    {selectedSchedule.township_name && (
+                      <p className="text-[10px] text-gray-400 mt-0.5">{selectedSchedule.township_name}</p>
+                    )}
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <User className="w-3.5 h-3.5 text-gray-400" />
+                      <p className="text-[10px] text-gray-400 font-medium uppercase">Contact</p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800">{selectedSchedule.contact_person || '—'}</p>
+                    {selectedSchedule.contact_phone && (
+                      <p className="text-[10px] text-gray-400 font-mono mt-0.5 flex items-center gap-1">
+                        <Phone className="w-3 h-3" /> {selectedSchedule.contact_phone}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Completion Info */}
+              {selectedSchedule.status === 'Completed' && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Completion Details</h4>
+                  <div className="bg-emerald-50 rounded-xl p-3 ring-1 ring-emerald-100 space-y-1.5">
+                    {selectedSchedule.action_date && (
+                      <p className="text-sm text-emerald-700"><span className="font-medium">Action Date:</span> {new Date(selectedSchedule.action_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    )}
+                    {selectedSchedule.completed_by && (
+                      <p className="text-sm text-emerald-700"><span className="font-medium">Engineer:</span> {selectedSchedule.completed_by}</p>
+                    )}
+                    {selectedSchedule.completed_date && (
+                      <p className="text-xs text-emerald-500">Recorded on {new Date(selectedSchedule.completed_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-3 rounded-b-2xl flex items-center justify-between">
+              <p className="text-[10px] text-gray-400">Schedule ID: <span className="font-mono">{selectedSchedule.id}</span></p>
+              <div className="flex gap-2">
+                {selectedSchedule.status !== 'Completed' && canComplete && (
+                  <button onClick={() => { setSelectedSchedule(null); setCompleteModal(selectedSchedule); }}
+                    className="px-4 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors">
+                    Complete PM
+                  </button>
+                )}
+                <button onClick={() => setSelectedSchedule(null)}
+                  className="px-4 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

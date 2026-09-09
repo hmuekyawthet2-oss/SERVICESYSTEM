@@ -55,16 +55,27 @@ const mockData = {
 // ── Try to connect to PostgreSQL ──────────────────────────────
 async function initDatabase() {
   try {
-    pool = new Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT, 10) || 5432,
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'password123',
-      database: process.env.DB_NAME || 'service_db',
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 3000,
-    });
+    // Support both DATABASE_URL (Supabase, Railway, etc.) and individual env vars
+    const dbConfig = process.env.DATABASE_URL
+      ? {
+          connectionString: process.env.DATABASE_URL,
+          ssl: { rejectUnauthorized: false },
+          max: 20,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 15000,
+        }
+      : {
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT, 10) || 5432,
+          user: process.env.DB_USER || 'postgres',
+          password: process.env.DB_PASSWORD || 'password123',
+          database: process.env.DB_NAME || 'service_db',
+          max: 20,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 3000,
+        };
+
+    pool = new Pool(dbConfig);
 
     pool.on('error', (err) => {
       console.error('⚠️  PostgreSQL pool error:', err.message);
