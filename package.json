@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "cd frontend && npm run dev",
-    "build": "cd frontend && npm run build",
-    "start": "cd backend && node src/app.js"
+    "build": "npm --prefix frontend run build",
+    "start": "node backend/src/app.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
