@@ -413,25 +413,28 @@ export const exportApi = {
   ticketWord(id) {
     return downloadFile(`/export/tickets/${id}/word`, `ticket_${id}.docx`);
   },
-  formPdf(type, data) {
-    return fetch(`${API_BASE}/forms/${type}/pdf`, {
+  async formPdf(type, data) {
+    const res = await fetch(`${API_BASE}/forms/${type}/pdf`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
       },
       body: JSON.stringify(data),
-    }).then(async (res) => {
-      if (!res.ok) throw new Error('PDF generation failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${type}_report.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
     });
+    if (!res.ok) {
+      let msg = 'PDF generation failed';
+      try { const j = await res.json(); msg = j.message || j.error || msg; } catch { try { msg = await res.text(); } catch {} }
+      throw new Error(`${res.status}: ${msg}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${type}_report.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 };
