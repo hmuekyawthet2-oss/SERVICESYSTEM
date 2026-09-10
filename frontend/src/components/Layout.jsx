@@ -18,12 +18,14 @@ import {
   ChevronRight,
   Database,
   ScrollText,
+  FileText,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Machine Registry', icon: Monitor },
   { to: '/pm-dashboard', label: 'PM Dashboard', icon: CalendarCheck },
   { to: '/service-tickets', label: 'Service Tickets', icon: ClipboardList },
+  { to: '/forms', label: 'Forms', icon: FileText },
   { to: '/history', label: 'History', icon: History },
 ];
 

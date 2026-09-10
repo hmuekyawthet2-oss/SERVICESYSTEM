@@ -14,6 +14,7 @@ import PermissionsPage from './pages/PermissionsPage';
 import HistoryPage from './pages/HistoryPage';
 import LoginLogsPage from './pages/LoginLogsPage';
 import BackupPage from './pages/BackupPage';
+import FormsPage from './pages/FormsPage';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -67,6 +68,7 @@ function AppRoutes() {
         <Route path="service-tickets" element={<ServiceTicketsPage />} />
         <Route path="service-tickets/new" element={<TicketFormPage />} />
         <Route path="service-tickets/:id" element={<TicketFormPage />} />
+        <Route path="forms" element={<FormsPage />} />
         <Route path="history" element={<HistoryPage />} />
         <Route path="login-logs" element={<AdminRoute><LoginLogsPage /></AdminRoute>} />
         <Route path="backup" element={<AdminRoute><BackupPage /></AdminRoute>} />
