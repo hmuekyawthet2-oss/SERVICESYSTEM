@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { pmSchedulesApi } from '../services/api';
+import { pmSchedulesApi, exportApi } from '../services/api';
 import { formatDateDisplay } from '../utils/pmCalculator';
 import { useAuth } from '../context/AuthContext';
 import { CheckCircle, X, Trash2, Monitor, MapPin, Phone, User, Calendar, Clock, Tag } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import DatePicker from '../components/DatePicker';
+import ExportDropdown from '../components/ExportDropdown';
 
 const colorMeta = {
   red: { label: 'Overdue', desc: 'Past PM window', dot: 'bg-red-500', card: 'border-red-200 bg-red-50/50', text: 'text-red-700', num: 'text-red-600', ring: 'ring-red-500' },
@@ -81,9 +82,15 @@ export default function PMDashboardPage() {
   return (
     <div className="max-w-6xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Preventive Maintenance</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Track and manage scheduled maintenance for all equipment</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Preventive Maintenance</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Track and manage scheduled maintenance for all equipment</p>
+        </div>
+        <ExportDropdown
+          onExportExcel={() => { const p = {}; if (filterColor) p.color = filterColor; if (dateFrom) p.date_from = dateFrom; if (dateTo) p.date_to = dateTo; toast.promise(exportApi.pmExcel(p), { loading: 'Exporting...', success: 'Excel downloaded!', error: 'Export failed' }); }}
+          onExportWord={() => { const p = {}; if (filterColor) p.color = filterColor; if (dateFrom) p.date_from = dateFrom; if (dateTo) p.date_to = dateTo; toast.promise(exportApi.pmWord(p), { loading: 'Exporting...', success: 'Word downloaded!', error: 'Export failed' }); }}
+        />
       </div>
 
       {/* Summary Cards */}

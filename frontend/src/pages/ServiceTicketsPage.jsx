@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ticketsApi } from '../services/api';
+import { ticketsApi, exportApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Search, CheckCircle, Phone, Wrench, Building2, X } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import DatePicker from '../components/DatePicker';
+import ExportDropdown from '../components/ExportDropdown';
 
 const PAGE_SIZE = 10;
 
@@ -92,12 +93,18 @@ export default function ServiceTicketsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Service Tickets</h1>
           <p className="text-sm text-gray-400 mt-0.5">{pagination.total} total tickets</p>
         </div>
-        {canCreate && (
-          <Link to="/service-tickets/new" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-            <Plus className="w-4 h-4" />
-            New Ticket
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportDropdown
+            onExportExcel={() => { const p = {}; if (statusFilter) p.status = statusFilter; if (search) p.search = search; if (dateFrom) p.date_from = dateFrom; if (dateTo) p.date_to = dateTo; toast.promise(exportApi.ticketsExcel(p), { loading: 'Exporting...', success: 'Excel downloaded!', error: 'Export failed' }); }}
+            onExportWord={() => { const p = {}; if (statusFilter) p.status = statusFilter; if (search) p.search = search; if (dateFrom) p.date_from = dateFrom; if (dateTo) p.date_to = dateTo; toast.promise(exportApi.ticketsWord(p), { loading: 'Exporting...', success: 'Word downloaded!', error: 'Export failed' }); }}
+          />
+          {canCreate && (
+            <Link to="/service-tickets/new" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+              <Plus className="w-4 h-4" />
+              New Ticket
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Filters */}

@@ -362,3 +362,76 @@ export const backupApi = {
     return filename;
   },
 };
+
+// ── Export API ─────────────────────────────────────────────
+
+async function downloadFile(path, filename) {
+  const token = getToken();
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new Error('Export failed');
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export const exportApi = {
+  machinesExcel(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return downloadFile(`/export/machines/excel?${query}`, 'machine_registry.xlsx');
+  },
+  machinesWord(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return downloadFile(`/export/machines/word?${query}`, 'machine_registry.docx');
+  },
+  machineWord(id) {
+    return downloadFile(`/export/machines/${id}/word`, `machine_${id}.docx`);
+  },
+  pmExcel(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return downloadFile(`/export/pm/excel?${query}`, 'pm_schedules.xlsx');
+  },
+  pmWord(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return downloadFile(`/export/pm/word?${query}`, 'pm_schedules.docx');
+  },
+  ticketsExcel(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return downloadFile(`/export/tickets/excel?${query}`, 'service_tickets.xlsx');
+  },
+  ticketsWord(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return downloadFile(`/export/tickets/word?${query}`, 'service_tickets.docx');
+  },
+  ticketWord(id) {
+    return downloadFile(`/export/tickets/${id}/word`, `ticket_${id}.docx`);
+  },
+  formPdf(type, data) {
+    return fetch(`${API_BASE}/forms/${type}/pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+      },
+      body: JSON.stringify(data),
+    }).then(async (res) => {
+      if (!res.ok) throw new Error('PDF generation failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${type}_report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  },
+};

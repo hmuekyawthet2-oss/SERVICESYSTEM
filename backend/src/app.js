@@ -18,6 +18,7 @@ const serviceTicketsRouter = require('./routes/serviceTickets');
 const auditLogsRouter = require('./routes/auditLogs');
 const loginLogsRouter = require('./routes/loginLogs');
 const backupRouter = require('./routes/backup');
+const exportRouter = require('./routes/export');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3001;
@@ -49,6 +50,7 @@ app.use('/api/service-tickets', serviceTicketsRouter);
 app.use('/api/audit-logs', auditLogsRouter);
 app.use('/api/login-logs', loginLogsRouter);
 app.use('/api/backup', backupRouter);
+app.use('/api/export', exportRouter);
 
 // ── 404 Handler ───────────────────────────────────────────────
 app.use((req, res) => {
