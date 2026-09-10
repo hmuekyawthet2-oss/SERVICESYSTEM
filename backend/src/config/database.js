@@ -62,7 +62,7 @@ async function initDatabase() {
           ssl: { rejectUnauthorized: false },
           max: 20,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 15000,
+          connectionTimeoutMillis: process.env.VERCEL === '1' ? 5000 : 15000,
         }
       : {
           host: process.env.DB_HOST || 'localhost',
@@ -486,16 +486,30 @@ const mockPool = {
   on: () => {},
 };
 
-// ── Initialize on load ────────────────────────────────────────
-initDatabase();
+// ── Initialize (non-blocking, so Vercel cold start isn't blocked) ──
+const _initPromise = initDatabase();
 
 // ── Export ────────────────────────────────────────────────────
 module.exports = {
-  query: (sql, params) => {
-    if (useMock || !pool) return Promise.resolve(mockQuery(sql, params));
+  query: async (sql, params) => {
+    // Wait for first init attempt to finish before using real pool
+    if (_initPromise && !useMock && pool) {
+      // Don't block forever — race with a short timeout
+      await Promise.race([
+        _initPromise.catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 2000)),
+      ]);
+    }
+    if (useMock || !pool) return mockQuery(sql, params);
     return pool.query(sql, params);
   },
-  connect: () => {
+  connect: async () => {
+    if (_initPromise && !useMock && pool) {
+      await Promise.race([
+        _initPromise.catch(() => {}),
+        new Promise(resolve => setTimeout(resolve, 2000)),
+      ]);
+    }
     if (useMock || !pool) return mockPool.connect();
     return pool.connect();
   },
