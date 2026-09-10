@@ -1,5 +1,5 @@
 const express = require('express');
-const PDFDocument = require('pdfkit');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 
 const router = express.Router();
 
@@ -11,74 +11,115 @@ const COMPANY = {
   email: 'E-mail: info@everglory.com.mm',
   website: 'Website: www.everglory.com.mm',
   hotline: 'Service Hotline: 09 253333466, 09 751669848',
+  footer: 'Copyright documents to Engineer Department and administration office of Ever Glory Co.,ltd.',
 };
 
-// Helper: buffer PDF instead of streaming (Vercel serverless compatible)
-function bufferPdf(buildFn) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
-    const chunks = [];
-    doc.on('data', (chunk) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-    try { buildFn(doc); doc.end(); } catch (e) { reject(e); }
-  });
-}
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
+const ML = 50;
+const MR = 50;
+const CW = PAGE_W - ML - MR;
 
-function drawHeader(doc) {
-  doc.fontSize(14).font('Helvetica-Bold').text(COMPANY.name, { align: 'center' });
-  doc.moveDown(0.2);
-  doc.fontSize(7).font('Helvetica').text(COMPANY.address, { align: 'center' });
-  doc.text(COMPANY.address2, { align: 'center' });
-  doc.text(COMPANY.tel, { align: 'center' });
-  doc.text(`${COMPANY.email}   ${COMPANY.website}`, { align: 'center' });
-  doc.moveDown(0.3);
-  doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-  doc.moveDown(0.3);
-}
+class PdfWriter {
+  constructor() {
+    this.doc = null;
+    this.page = null;
+    this.y = 0;
+    this.fonts = {};
+    this.rowH = 14;
+  }
 
-function drawField(doc, label, value, x, y, w) {
-  doc.fontSize(8).font('Helvetica-Bold').text(label, x, y);
-  const valX = x + doc.widthOfString(label) + 4;
-  doc.font('Helvetica').text(value || '________________', valX, y, { width: w - doc.widthOfString(label) - 8 });
-  const lineY = y + 12;
-  doc.moveTo(valX, lineY).lineTo(x + w, lineY).strokeColor('#999').lineWidth(0.5).stroke().strokeColor('black').lineWidth(1);
-  return lineY + 4;
-}
+  async init() {
+    this.doc = await PDFDocument.create();
+    this.fonts.bold = await this.doc.embedFont(StandardFonts.HelveticaBold);
+    this.fonts.normal = await this.doc.embedFont(StandardFonts.Helvetica);
+    this.fonts.italic = await this.doc.embedFont(StandardFonts.HelveticaOblique);
+    this.addPage();
+  }
 
-function drawCheckbox(doc, label, checked, x, y) {
-  doc.fontSize(8).font('Helvetica').rect(x, y, 8, 8).stroke();
-  if (checked) { doc.fontSize(8).text('X', x + 1.5, y + 0.5); }
-  doc.text(label, x + 11, y + 1);
-  return doc;
-}
+  addPage() {
+    this.page = this.doc.addPage([PAGE_W, PAGE_H]);
+    this.y = PAGE_H - 50;
+  }
 
-function drawSectionTitle(doc, title, y) {
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#1a5276').text(title, 50, y);
-  doc.fillColor('black');
-  doc.moveTo(50, y + 12).lineTo(545, y + 12).strokeColor('#1a5276').lineWidth(1).stroke().strokeColor('black').lineWidth(1);
-  return y + 16;
-}
+  text(str, x, y, opts = {}) {
+    const font = opts.bold ? this.fonts.bold : opts.italic ? this.fonts.italic : this.fonts.normal;
+    const size = opts.size || 8;
+    const color = opts.color || rgb(0, 0, 0);
+    this.page.drawText(String(str || ''), { x, y, size, font, color });
+  }
 
-function drawTable(doc, headers, rows, x, y, colWidths) {
-  let curY = y;
-  const rowH = 14;
-  doc.fontSize(7).font('Helvetica-Bold');
-  headers.forEach((h, i) => {
-    const colX = x + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
-    doc.rect(colX, curY, colWidths[i], rowH).fill('#1a5276').fillColor('white').text(h, colX + 2, curY + 3, { width: colWidths[i] - 4 });
-  });
-  curY += rowH;
-  doc.font('Helvetica').fillColor('black');
-  rows.forEach((row) => {
-    row.forEach((cell, i) => {
-      const colX = x + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
-      doc.rect(colX, curY, colWidths[i], rowH).stroke();
-      doc.text(String(cell || ''), colX + 2, curY + 3, { width: colWidths[i] - 4 });
+  textWidth(str, size, bold) {
+    const font = bold ? this.fonts.bold : this.fonts.normal;
+    return font.widthOfTextAtSize(String(str || ''), size || 8);
+  }
+
+  moveTo(x, y) { this._lineX = x; this._lineY = y; }
+  lineTo(x, y) {
+    this.page.drawLine({ start: { x: this._lineX, y: this._lineY }, end: { x, y }, thickness: 1, color: rgb(0, 0, 0) });
+  }
+  strokeBlue() {
+    this.page.drawLine({ start: { x: ML, y: this._lineY }, end: { x: PAGE_W - MR, y: this._lineY }, thickness: 1, color: rgb(0.102, 0.322, 0.463) });
+  }
+  lineGray(x, y, x2) {
+    this.page.drawLine({ start: { x, y }, end: { x: x2, y }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) });
+  }
+  lineThin(x, y, x2) {
+    this.page.drawLine({ start: { x, y }, end: { x: x2 || PAGE_W - MR, y }, thickness: 0.5, color: rgb(0, 0, 0) });
+  }
+
+  rect(x, y, w, h, fill) {
+    this.page.drawRectangle({ x, y, width: w, height: h, borderWidth: 0.5, borderColor: rgb(0, 0, 0), color: fill || undefined });
+  }
+  rectBlue(x, y, w, h) {
+    this.page.drawRectangle({ x, y, width: w, height: h, borderWidth: 0, color: rgb(0.102, 0.322, 0.463) });
+  }
+
+  sectionTitle(title, y) {
+    this.text(title, ML, y, { bold: true, size: 9, color: rgb(0.102, 0.322, 0.463) });
+    this.page.drawLine({ start: { x: ML, y: y - 4 }, end: { x: PAGE_W - MR, y: y - 4 }, thickness: 1, color: rgb(0.102, 0.322, 0.463) });
+    return y - 18;
+  }
+
+  drawField(label, value, x, y, w) {
+    this.text(label, x, y, { bold: true, size: 8 });
+    const lw = this.textWidth(label, 8, true);
+    const vx = x + lw + 4;
+    this.text(value || '________________', vx, y, { size: 8 });
+    this.lineGray(vx, y - 2, x + w);
+    return y - 16;
+  }
+
+  drawCheckbox(label, checked, x, y) {
+    this.rect(x, y, 8, 8);
+    if (checked) this.text('X', x + 1.5, y + 1, { size: 8 });
+    this.text(label, x + 11, y + 1, { size: 8 });
+  }
+
+  drawTable(headers, rows, x, y, colWidths) {
+    let curY = y;
+    // Header row
+    let cx = x;
+    headers.forEach((h, i) => {
+      this.rectBlue(cx, curY - this.rowH, colWidths[i], this.rowH);
+      this.text(h, cx + 2, curY - this.rowH + 3, { bold: true, size: 7, color: rgb(1, 1, 1) });
+      cx += colWidths[i];
     });
-    curY += rowH;
-  });
-  return curY;
+    curY -= this.rowH;
+    // Data rows
+    rows.forEach((row) => {
+      cx = x;
+      row.forEach((cell, i) => {
+        this.rect(cx, curY - this.rowH, colWidths[i], this.rowH);
+        this.text(String(cell || ''), cx + 2, curY - this.rowH + 3, { size: 7 });
+        cx += colWidths[i];
+      });
+      curY -= this.rowH;
+    });
+    return curY;
+  }
+
+  getBuffer() { return this.doc.save(); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -87,101 +128,117 @@ function drawTable(doc, headers, rows, x, y, colWidths) {
 router.post('/installation/pdf', async (req, res) => {
   try {
     const d = req.body;
-    const pdf = await bufferPdf((doc) => {
-      drawHeader(doc);
-      doc.fontSize(12).font('Helvetica-Bold').text('Installation and Commissioning Report', { align: 'center' });
-      doc.moveDown(0.5);
+    const w = new PdfWriter();
+    await w.init();
 
-      const y0 = doc.y;
-      doc.fontSize(7).font('Helvetica').text('Document No: EG-RE-ME-001-00', 50, y0);
-      doc.text(COMPANY.hotline, 320, y0, { align: 'right', width: 225 });
-      doc.text('Page 1 of 1', 500, y0, { align: 'right', width: 50 });
-      doc.moveDown(0.8);
+    // Header
+    w.text(COMPANY.name, ML, w.y, { bold: true, size: 14 });
+    w.y -= 14;
+    w.text(COMPANY.address, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(COMPANY.address2, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(COMPANY.tel, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(`${COMPANY.email}   ${COMPANY.website}`, ML, w.y, { size: 7 }); w.y -= 12;
+    w.page.drawLine({ start: { x: ML, y: w.y }, end: { x: PAGE_W - MR, y: w.y }, thickness: 1 }); w.y -= 14;
 
-      let y = doc.y;
-      y = drawField(doc, "Customer's Name:", d.customer_name, 50, y, 240);
-      y = drawField(doc, 'Department/Hospital:', d.hospital, 300, y - 16, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Address:', d.address, 50, y, 240);
-      y = drawField(doc, 'Township:', d.township, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Ph No:', d.phone, 50, y, 240);
-      y = drawField(doc, 'Email:', d.email, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Equipment:', d.equipment, 50, y, 240);
-      y = drawField(doc, 'Installation Start Date:', d.install_start, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Model:', d.model, 50, y, 240);
-      y = drawField(doc, 'Installation Finished Date:', d.install_finish, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Serial No:', d.serial_no, 50, y, 240);
-      y = drawField(doc, 'Working Day/Time:', d.working_time, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Installation Date:', d.installation_date, 50, y, 240);
-      doc.fontSize(8).font('Helvetica-Bold').text('Warranty:', 300, y);
-      drawCheckbox(doc, 'Under', d.warranty === 'under', 365, y);
-      drawCheckbox(doc, 'Over', d.warranty === 'over', 420, y);
-      y += 18;
+    // Title
+    w.text('Installation and Commissioning Report', ML, w.y, { bold: true, size: 12 });
+    w.y -= 20;
 
-      y = drawSectionTitle(doc, 'Installation Parts and Supplies', y + 4);
-      const partHeaders = ['No', 'Item List', 'Qty', 'OPERATIVE', 'NON OPERATIVE', 'REMARKS'];
-      const partWidths = [30, 160, 50, 80, 90, 85];
-      const partRows = (d.parts || []).map((p, i) => [i + 1, p.item || '', p.qty || '', p.operative || '', p.non_operative || '', p.remarks || '']);
-      while (partRows.length < 9) partRows.push([partRows.length + 1, '', '', '', '', '']);
-      y = drawTable(doc, partHeaders, partRows.slice(0, 9), 50, y, partWidths);
+    // Doc line
+    w.text('Document No: EG-RE-ME-001-00', ML, w.y, { size: 7 });
+    w.text(COMPANY.hotline, PAGE_W - MR - w.textWidth(COMPANY.hotline, 7), w.y, { size: 7 });
+    w.y -= 14;
 
-      y = drawSectionTitle(doc, 'Report', y + 6);
-      doc.fontSize(8).font('Helvetica');
-      doc.text(`1  Parts Condition            ( ${d.parts_condition || '   '} )`, 55, y);
-      doc.text(`Installation Complete Date:   ${d.install_complete_date || '____/____/2026'}`, 310, y);
-      y += 14;
-      doc.text(`2  Installation Condition     ( ${d.install_condition || '   '} )`, 55, y);
-      doc.text(`Test Running Date:           ${d.test_running_date || '____/____/2026'}`, 310, y);
-      y += 14;
-      doc.text(`3  Operation Condition       ( ${d.operation_condition || '   '} )`, 55, y);
-      doc.text('User Training for respective person:', 310, y);
-      drawCheckbox(doc, 'Complete', d.training_complete, 490, y);
-      y += 20;
+    // Fields - two columns
+    let y = w.y;
+    y = w.drawField("Customer's Name:", d.customer_name, ML, y, 240);
+    y = w.drawField('Department/Hospital:', d.hospital, 300, y + 16, 245);
+    y -= 16;
+    y = w.drawField('Address:', d.address, ML, y, 240);
+    y = w.drawField('Township:', d.township, 300, y + 16, 245);
+    y -= 16;
+    y = w.drawField('Ph No:', d.phone, ML, y, 240);
+    y = w.drawField('Email:', d.email, 300, y + 16, 245);
+    y -= 16;
+    y = w.drawField('Equipment:', d.equipment, ML, y, 240);
+    y = w.drawField('Installation Start Date:', d.install_start, 300, y + 16, 245);
+    y -= 16;
+    y = w.drawField('Model:', d.model, ML, y, 240);
+    y = w.drawField('Installation Finished Date:', d.install_finish, 300, y + 16, 245);
+    y -= 16;
+    y = w.drawField('Serial No:', d.serial_no, ML, y, 240);
+    y = w.drawField('Working Day/Time:', d.working_time, 300, y + 16, 245);
+    y -= 16;
+    y = w.drawField('Installation Date:', d.installation_date, ML, y, 240);
+    w.text('Warranty:', 300, y + 14, { bold: true, size: 8 });
+    w.drawCheckbox('Under', d.warranty === 'under', 365, y + 14);
+    w.drawCheckbox('Over', d.warranty === 'over', 420, y + 14);
+    y -= 20;
 
-      doc.fontSize(7).font('Helvetica-Oblique').text('Warranty Exclusions', 50, y);
-      y += 10;
-      doc.fontSize(6.5).font('Helvetica').text('The distributor shall not be responsible on the following factors:', 50, y);
-      y += 8;
-      doc.text('I.  Natural Disaster.', 55, y); y += 8;
-      doc.text('II. Any defect due to unspecified connection/environment such as Unstable Power Supply, Commercial or', 55, y); y += 8;
-      doc.text('    Generator Failure without protection and End User\'s Fault, Humidity and Air Conditioning shortage etc.', 60, y); y += 8;
-      doc.text('III. Failure caused by customized modification beyond the Manufacturer\'s Recommendation.', 55, y); y += 8;
-      doc.text('IV. Any consumable parts like Lamp, pneumatic tubing, Mechanical Belt, Chassis Cover, Cuvettes etc.', 55, y); y += 10;
+    // Parts table
+    y = w.sectionTitle('Installation Parts and Supplies', y);
+    const partHeaders = ['No', 'Item List', 'Qty', 'OPERATIVE', 'NON OPERATIVE', 'REMARKS'];
+    const partWidths = [30, 160, 50, 80, 90, 85];
+    const partRows = (d.parts || []).slice(0, 9).map((p, i) => [i + 1, p.item || '', p.qty || '', p.operative || '', p.non_operative || '', p.remarks || '']);
+    while (partRows.length < 9) partRows.push([partRows.length + 1, '', '', '', '', '']);
+    y = w.drawTable(partHeaders, partRows, ML, y, partWidths);
 
-      doc.fontSize(7).font('Helvetica').text('The above equipment has proven satisfactory in installation, operation, hand-on training and thus passed', 50, y); y += 8;
-      doc.text(`Commission on date  ${d.commission_date || '____/____/2026'}`, 50, y); y += 8;
-      doc.text(`Therefore, the Warranty Period shall be from  ${d.warranty_from || '____/____/2026'}  to  ${d.warranty_to || '____/____/2027'}.`, 50, y); y += 14;
+    // Report
+    y -= 6;
+    y = w.sectionTitle('Report', y);
+    w.text(`1  Parts Condition           ( ${d.parts_condition || '   '} )`, ML + 5, y, { size: 8 });
+    w.text(`Installation Complete Date:  ${d.install_complete_date || '____/____/2026'}`, 310, y, { size: 8 });
+    y -= 14;
+    w.text(`2  Installation Condition    ( ${d.install_condition || '   '} )`, ML + 5, y, { size: 8 });
+    w.text(`Test Running Date:          ${d.test_running_date || '____/____/2026'}`, 310, y, { size: 8 });
+    y -= 14;
+    w.text(`3  Operation Condition      ( ${d.operation_condition || '   '} )`, ML + 5, y, { size: 8 });
+    w.text('User Training for respective person:', 310, y, { size: 8 });
+    w.drawCheckbox('Complete', d.training_complete, 490, y);
+    y -= 20;
 
-      doc.fontSize(8).font('Helvetica-Bold').text('Remark:', 50, y); y += 12;
-      doc.fontSize(7).font('Helvetica').text(d.remark || '', 55, y, { width: 490 });
-      y = doc.y + 16;
+    // Warranty Exclusions
+    w.text('Warranty Exclusions', ML, y, { italic: true, size: 7 }); y -= 10;
+    w.text('The distributor shall not be responsible on the following factors:', ML, y, { size: 6.5 }); y -= 8;
+    w.text('I.  Natural Disaster.', ML + 5, y, { size: 6.5 }); y -= 8;
+    w.text('II. Any defect due to unspecified connection/environment such as Unstable Power Supply, Commercial or', ML + 5, y, { size: 6.5 }); y -= 8;
+    w.text('    Generator Failure without protection and End User\'s Fault, Humidity and Air Conditioning shortage etc.', ML + 10, y, { size: 6.5 }); y -= 8;
+    w.text('III. Failure caused by customized modification beyond the Manufacturer\'s Recommendation.', ML + 5, y, { size: 6.5 }); y -= 8;
+    w.text('IV. Any consumable parts like Lamp, pneumatic tubing, Mechanical Belt, Chassis Cover, Cuvettes etc.', ML + 5, y, { size: 6.5 }); y -= 12;
 
-      doc.moveTo(50, y).lineTo(545, y).stroke(); y += 10;
-      doc.fontSize(8).font('Helvetica-Bold');
-      doc.text('Authorized Engineer', 50, y);
-      doc.text('Customer/ In Charge', 310, y);
-      y += 16;
-      doc.font('Helvetica');
-      doc.text('Signature:', 50, y); doc.text('Signature:', 310, y);
-      y += 12;
-      doc.text('Name:', 50, y); doc.text('Name:', 310, y);
-      y += 12;
-      doc.text('Designation:', 50, y); doc.text('Designation:', 310, y);
+    // Commission text
+    w.text('The above equipment has proven satisfactory in installation, operation, hand-on training and thus passed', ML, y, { size: 7 }); y -= 8;
+    w.text(`Commission on date  ${d.commission_date || '____/____/2026'}`, ML, y, { size: 7 }); y -= 8;
+    w.text(`Therefore, the Warranty Period shall be from  ${d.warranty_from || '____/____/2026'}  to  ${d.warranty_to || '____/____/2027'}.`, ML, y, { size: 7 }); y -= 14;
 
-      doc.fontSize(5).font('Helvetica-Oblique').text('Copyright documents to Engineer Department and administration office of Ever Glory Co.,ltd.', 50, doc.page.height - 40, { align: 'center', width: 495 });
-    });
+    // Remark
+    w.text('Remark:', ML, y, { bold: true, size: 8 }); y -= 12;
+    if (d.remark) w.text(d.remark, ML + 5, y, { size: 7 });
+    y -= 16;
 
+    // Signature line
+    w.page.drawLine({ start: { x: ML, y: w.y + (w.y - y) }, end: { x: PAGE_W - MR, y: w.y + (w.y - y) }, thickness: 1 });
+    const sigY = y - 4;
+    w.text('Authorized Engineer', ML, sigY, { bold: true, size: 8 });
+    w.text('Customer/ In Charge', 310, sigY, { bold: true, size: 8 });
+    w.text('Signature:', ML, sigY - 16, { size: 8 });
+    w.text('Signature:', 310, sigY - 16, { size: 8 });
+    w.text('Name:', ML, sigY - 28, { size: 8 });
+    w.text('Name:', 310, sigY - 28, { size: 8 });
+    w.text('Designation:', ML, sigY - 40, { size: 8 });
+    w.text('Designation:', 310, sigY - 40, { size: 8 });
+
+    // Footer
+    const footerY = 40;
+    w.text(COMPANY.footer, ML, footerY, { italic: true, size: 5 });
+
+    const pdfBytes = await w.getBuffer();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=installation_report.pdf');
-    res.send(pdf);
+    res.send(Buffer.from(pdfBytes));
   } catch (err) {
     console.error('Installation PDF error:', err);
-    res.status(500).json({ success: false, message: 'PDF generation failed: ' + (err.message || 'unknown') });
+    res.status(500).json({ success: false, message: 'PDF generation failed: ' + err.message });
   }
 });
 
@@ -191,107 +248,94 @@ router.post('/installation/pdf', async (req, res) => {
 router.post('/maintenance/pdf', async (req, res) => {
   try {
     const d = req.body;
-    const pdf = await bufferPdf((doc) => {
-      drawHeader(doc);
-      doc.fontSize(12).font('Helvetica-Bold').text('Maintenance Report', { align: 'center' });
-      doc.moveDown(0.5);
+    const w = new PdfWriter();
+    await w.init();
 
-      const y0 = doc.y;
-      doc.fontSize(7).font('Helvetica').text('Document No: EG-RE-ME-003-00', 50, y0);
-      doc.text(COMPANY.hotline, 320, y0, { align: 'right', width: 225 });
-      doc.text('Page 1 of 1', 500, y0, { align: 'right', width: 50 });
-      doc.moveDown(0.8);
+    w.text(COMPANY.name, ML, w.y, { bold: true, size: 14 }); w.y -= 14;
+    w.text(COMPANY.address, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(COMPANY.address2, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(COMPANY.tel, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(`${COMPANY.email}   ${COMPANY.website}`, ML, w.y, { size: 7 }); w.y -= 12;
+    w.page.drawLine({ start: { x: ML, y: w.y }, end: { x: PAGE_W - MR, y: w.y }, thickness: 1 }); w.y -= 14;
 
-      let y = doc.y;
-      y = drawField(doc, "Customer's Name:", d.customer_name, 50, y, 240);
-      y = drawField(doc, 'Department/Hospital:', d.hospital, 300, y - 16, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Address:', d.address, 50, y, 240);
-      y = drawField(doc, 'Township:', d.township, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Ph No:', d.phone, 50, y, 240);
-      y = drawField(doc, 'Email:', d.email, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Install Date:', d.install_date, 50, y, 240);
-      y = drawField(doc, 'Date:', d.report_date, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Equipment:', d.equipment, 50, y, 240);
-      y = drawField(doc, '', '', 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Model:', d.model, 50, y, 240);
-      y = drawField(doc, '', '', 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Serial No:', d.serial_no, 50, y, 240);
+    w.text('Maintenance Report', ML, w.y, { bold: true, size: 12 }); w.y -= 20;
+    w.text('Document No: EG-RE-ME-003-00', ML, w.y, { size: 7 });
+    w.text(COMPANY.hotline, PAGE_W - MR - w.textWidth(COMPANY.hotline, 7), w.y, { size: 7 }); w.y -= 14;
 
-      y += 8;
-      y = drawSectionTitle(doc, 'REPORT / ACTION TAKEN', y);
-      doc.fontSize(7).font('Helvetica');
-      const reportText = d.report_action || '';
-      doc.text(reportText, 55, y + 4, { width: 490, lineGap: 2 });
-      y = Math.max(doc.y + 6, y + 60);
-      doc.moveTo(50, y).lineTo(545, y).stroke();
-      y += 6;
+    let y = w.y;
+    y = w.drawField("Customer's Name:", d.customer_name, ML, y, 240);
+    y = w.drawField('Department/Hospital:', d.hospital, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Address:', d.address, ML, y, 240);
+    y = w.drawField('Township:', d.township, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Ph No:', d.phone, ML, y, 240);
+    y = w.drawField('Email:', d.email, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Install Date:', d.install_date, ML, y, 240);
+    y = w.drawField('Date:', d.report_date, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Equipment:', d.equipment, ML, y, 240); y -= 16;
+    y = w.drawField('Model:', d.model, ML, y, 240); y -= 16;
+    y = w.drawField('Serial No:', d.serial_no, ML, y, 240);
 
-      y = drawSectionTitle(doc, 'Checking Up', y + 4);
-      const checks = [
-        ['1  Parts Condition', d.check_parts], ['5  General Service', d.check_general],
-        ['2  Machine Condition', d.check_machine], ['6  Calibration Condition', d.check_calibration],
-        ['3  Operation Condition', d.check_operation], ['7  Testing Condition', d.check_testing],
-        ['4  Service Condition', d.check_service], ['8  Repair / Breakdown', d.check_repair],
-      ];
-      doc.fontSize(7).font('Helvetica');
-      for (let i = 0; i < 4; i++) {
-        doc.text(checks[i][0], 55, y + i * 12);
-        doc.text(checks[i + 4][0], 300, y + i * 12);
-      }
-      y += 52;
+    y -= 8;
+    y = w.sectionTitle('REPORT / ACTION TAKEN', y);
+    if (d.report_action) w.text(d.report_action, ML + 5, y, { size: 7 });
+    y = Math.max(y - 50, 100);
+    w.page.drawLine({ start: { x: ML, y: w.y + (w.y - y) }, end: { x: PAGE_W - MR, y: w.y + (w.y - y) }, thickness: 1 });
+    y -= 6;
 
-      doc.fontSize(7);
-      doc.text('General machine condition', 55, y);
-      drawCheckbox(doc, 'Good', d.general_condition === 'Good', 200, y);
-      drawCheckbox(doc, 'Fair', d.general_condition === 'Fair', 260, y);
-      drawCheckbox(doc, 'Fail', d.general_condition === 'Fail', 320, y);
-      y += 12;
-      doc.text('Environment Condition', 55, y);
-      drawCheckbox(doc, 'Good', d.environment_condition === 'Good', 200, y);
-      drawCheckbox(doc, 'Fair', d.environment_condition === 'Fair', 260, y);
-      drawCheckbox(doc, 'Poor', d.environment_condition === 'Poor', 320, y);
-      y += 14;
+    y = w.sectionTitle('Checking Up', y);
+    const checks = [
+      ['1  Parts Condition', d.check_parts], ['5  General Service', d.check_general],
+      ['2  Machine Condition', d.check_machine], ['6  Calibration Condition', d.check_calibration],
+      ['3  Operation Condition', d.check_operation], ['7  Testing Condition', d.check_testing],
+      ['4  Service Condition', d.check_service], ['8  Repair / Breakdown', d.check_repair],
+    ];
+    for (let i = 0; i < 4; i++) {
+      w.text(checks[i][0], ML + 5, y - i * 12, { size: 7 });
+      w.text(checks[i + 4][0], 300, y - i * 12, { size: 7 });
+    }
+    y -= 52;
 
-      y = drawField(doc, 'Service Start Date:', d.service_start, 50, y, 240);
-      y = drawField(doc, 'Service Complete Date:', d.service_complete, 300, y - 16, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Human Error:', d.human_error, 50, y, 240);
-      y += 4;
-      y = drawField(doc, 'Test Running Date:', d.test_running, 50, y, 240);
-      drawCheckbox(doc, 'Complete', d.test_complete, 300, y);
-      y += 16;
+    w.text('General machine condition', ML + 5, y, { size: 7 });
+    w.drawCheckbox('Good', d.general_condition === 'Good', 200, y);
+    w.drawCheckbox('Fair', d.general_condition === 'Fair', 260, y);
+    w.drawCheckbox('Fail', d.general_condition === 'Fail', 320, y);
+    y -= 12;
+    w.text('Environment Condition', ML + 5, y, { size: 7 });
+    w.drawCheckbox('Good', d.environment_condition === 'Good', 200, y);
+    w.drawCheckbox('Fair', d.environment_condition === 'Fair', 260, y);
+    w.drawCheckbox('Poor', d.environment_condition === 'Poor', 320, y);
+    y -= 16;
 
-      y = drawSectionTitle(doc, 'ADDITIONAL REMARK', y);
-      doc.fontSize(7).font('Helvetica').text(d.additional_remark || '', 55, y + 4, { width: 490 });
-      y = Math.max(doc.y + 10, y + 30);
+    y = w.drawField('Service Start Date:', d.service_start, ML, y, 240);
+    y = w.drawField('Service Complete Date:', d.service_complete, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Human Error:', d.human_error, ML, y, 240); y -= 2;
+    y = w.drawField('Test Running Date:', d.test_running, ML, y, 240);
+    w.drawCheckbox('Complete', d.test_complete, 300, y + 14); y -= 16;
 
-      doc.moveTo(50, y).lineTo(545, y).stroke(); y += 10;
-      doc.fontSize(8).font('Helvetica-Bold');
-      doc.text('Authorized Engineer', 50, y);
-      doc.text('Customer/In Charge', 310, y);
-      y += 16;
-      doc.font('Helvetica');
-      doc.text('Signature :', 50, y); doc.text('Signature :', 310, y);
-      y += 12;
-      doc.text('Name :', 50, y); doc.text('Name :', 310, y);
-      y += 12;
-      doc.text('Designation :', 50, y); doc.text('Designation :', 310, y);
+    y = w.sectionTitle('ADDITIONAL REMARK', y);
+    if (d.additional_remark) w.text(d.additional_remark, ML + 5, y, { size: 7 });
+    y = Math.max(y - 30, 100);
 
-      doc.fontSize(5).font('Helvetica-Oblique').text('Copyright documents to Engineer Department and administration office of Ever Glory Co.,ltd.', 50, doc.page.height - 40, { align: 'center', width: 495 });
-    });
+    const sigY2 = y - 4;
+    w.page.drawLine({ start: { x: ML, y: sigY2 + 4 }, end: { x: PAGE_W - MR, y: sigY2 + 4 }, thickness: 1 });
+    w.text('Authorized Engineer', ML, sigY2, { bold: true, size: 8 });
+    w.text('Customer/In Charge', 310, sigY2, { bold: true, size: 8 });
+    w.text('Signature :', ML, sigY2 - 16, { size: 8 });
+    w.text('Signature :', 310, sigY2 - 16, { size: 8 });
+    w.text('Name :', ML, sigY2 - 28, { size: 8 });
+    w.text('Name :', 310, sigY2 - 28, { size: 8 });
+    w.text('Designation :', ML, sigY2 - 40, { size: 8 });
+    w.text('Designation :', 310, sigY2 - 40, { size: 8 });
 
+    w.text(COMPANY.footer, ML, 40, { italic: true, size: 5 });
+
+    const pdfBytes = await w.getBuffer();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=maintenance_report.pdf');
-    res.send(pdf);
+    res.send(Buffer.from(pdfBytes));
   } catch (err) {
     console.error('Maintenance PDF error:', err);
-    res.status(500).json({ success: false, message: 'PDF generation failed: ' + (err.message || 'unknown') });
+    res.status(500).json({ success: false, message: 'PDF generation failed: ' + err.message });
   }
 });
 
@@ -301,127 +345,120 @@ router.post('/maintenance/pdf', async (req, res) => {
 router.post('/field-service/pdf', async (req, res) => {
   try {
     const d = req.body;
-    const pdf = await bufferPdf((doc) => {
-      drawHeader(doc);
-      doc.fontSize(12).font('Helvetica-Bold').text('Field Service Report', { align: 'center' });
-      doc.moveDown(0.5);
+    const w = new PdfWriter();
+    await w.init();
 
-      const y0 = doc.y;
-      doc.fontSize(7).font('Helvetica').text('Document No: EG-RE-ME-002-00', 50, y0);
-      doc.text(COMPANY.hotline, 320, y0, { align: 'right', width: 225 });
-      doc.text('Page 1 of 1', 500, y0, { align: 'right', width: 50 });
-      doc.moveDown(0.8);
+    w.text(COMPANY.name, ML, w.y, { bold: true, size: 14 }); w.y -= 14;
+    w.text(COMPANY.address, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(COMPANY.address2, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(COMPANY.tel, ML, w.y, { size: 7 }); w.y -= 9;
+    w.text(`${COMPANY.email}   ${COMPANY.website}`, ML, w.y, { size: 7 }); w.y -= 12;
+    w.page.drawLine({ start: { x: ML, y: w.y }, end: { x: PAGE_W - MR, y: w.y }, thickness: 1 }); w.y -= 14;
 
-      let y = doc.y;
-      y = drawField(doc, "Customer's Name:", d.customer_name, 50, y, 240);
-      y = drawField(doc, 'Department/Hospital:', d.hospital, 300, y - 16, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Address:', d.address, 50, y, 240);
-      y = drawField(doc, 'Township:', d.township, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Ph No:', d.phone, 50, y, 240);
-      y = drawField(doc, 'Email:', d.email, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Equipment:', d.equipment, 50, y, 240);
-      y = drawField(doc, 'Service Start Date:', d.service_start, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Model:', d.model, 50, y, 240);
-      y = drawField(doc, 'Service Finished Date:', d.service_finish, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Serial No:', d.serial_no, 50, y, 240);
-      y = drawField(doc, 'Working Day/Time:', d.working_time, 300, y, 245);
-      y = Math.max(y, y + 16);
-      y = drawField(doc, 'Installation Date:', d.installation_date, 50, y, 240);
-      doc.fontSize(8).font('Helvetica-Bold').text('Warranty:', 300, y);
-      drawCheckbox(doc, 'Under', d.warranty === 'under', 365, y);
-      drawCheckbox(doc, 'Over', d.warranty === 'over', 420, y);
-      y += 18;
+    w.text('Field Service Report', ML, w.y, { bold: true, size: 12 }); w.y -= 20;
+    w.text('Document No: EG-RE-ME-002-00', ML, w.y, { size: 7 });
+    w.text(COMPANY.hotline, PAGE_W - MR - w.textWidth(COMPANY.hotline, 7), w.y, { size: 7 }); w.y -= 14;
 
-      y = drawSectionTitle(doc, 'Failure Description', y);
-      doc.fontSize(7).font('Helvetica').text(d.failure_description || '', 55, y + 4, { width: 490, lineGap: 2 });
-      y = Math.max(doc.y + 6, y + 30);
+    let y = w.y;
+    y = w.drawField("Customer's Name:", d.customer_name, ML, y, 240);
+    y = w.drawField('Department/Hospital:', d.hospital, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Address:', d.address, ML, y, 240);
+    y = w.drawField('Township:', d.township, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Ph No:', d.phone, ML, y, 240);
+    y = w.drawField('Email:', d.email, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Equipment:', d.equipment, ML, y, 240);
+    y = w.drawField('Service Start Date:', d.service_start, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Model:', d.model, ML, y, 240);
+    y = w.drawField('Service Finished Date:', d.service_finish, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Serial No:', d.serial_no, ML, y, 240);
+    y = w.drawField('Working Day/Time:', d.working_time, 300, y + 16, 245); y -= 16;
+    y = w.drawField('Installation Date:', d.installation_date, ML, y, 240);
+    w.text('Warranty:', 300, y + 14, { bold: true, size: 8 });
+    w.drawCheckbox('Under', d.warranty === 'under', 365, y + 14);
+    w.drawCheckbox('Over', d.warranty === 'over', 420, y + 14);
+    y -= 20;
 
-      y = drawSectionTitle(doc, 'Inspection & Fixed', y);
-      doc.fontSize(7).font('Helvetica').text(d.inspection_fixed || '', 55, y + 4, { width: 490, lineGap: 2 });
-      y = Math.max(doc.y + 6, y + 30);
+    y = w.sectionTitle('Failure Description', y);
+    if (d.failure_description) w.text(d.failure_description, ML + 5, y, { size: 7 });
+    y = Math.max(y - 24, 100);
 
-      doc.fontSize(8).font('Helvetica-Bold').text('Action(s) Taken:', 50, y);
-      drawCheckbox(doc, 'Maintained', (d.actions_taken || '').toLowerCase().includes('maintained'), 165, y);
-      drawCheckbox(doc, 'Reconditioned', (d.actions_taken || '').toLowerCase().includes('reconditioned'), 260, y);
-      drawCheckbox(doc, 'Replace', (d.actions_taken || '').toLowerCase().includes('replace'), 370, y);
-      drawCheckbox(doc, 'Repair', (d.actions_taken || '').toLowerCase().includes('repair'), 450, y);
-      y += 16;
+    y = w.sectionTitle('Inspection & Fixed', y);
+    if (d.inspection_fixed) w.text(d.inspection_fixed, ML + 5, y, { size: 7 });
+    y = Math.max(y - 24, 100);
 
-      y = drawSectionTitle(doc, 'PARTS', y);
-      const partHeaders = ['No', 'Parts', 'Descriptions', 'Unit Price', 'Qty', 'Amount(Kyat)'];
-      const partWidths = [30, 90, 140, 80, 50, 95];
-      const partRows = (d.parts || []).map((p, i) => [i + 1, p.name || '', p.description || '', p.unit_price || '', p.qty || '', p.amount || '']);
-      while (partRows.length < 5) partRows.push([partRows.length + 1, '', '', '', '', '']);
-      y = drawTable(doc, partHeaders, partRows.slice(0, 5), 50, y, partWidths);
+    w.text('Action(s) Taken:', ML, y, { bold: true, size: 8 });
+    w.drawCheckbox('Maintained', (d.actions_taken || '').toLowerCase().includes('maintained'), 165, y);
+    w.drawCheckbox('Reconditioned', (d.actions_taken || '').toLowerCase().includes('reconditioned'), 260, y);
+    w.drawCheckbox('Replace', (d.actions_taken || '').toLowerCase().includes('replace'), 370, y);
+    w.drawCheckbox('Repair', (d.actions_taken || '').toLowerCase().includes('repair'), 450, y);
+    y -= 16;
 
-      doc.fontSize(7).font('Helvetica-Bold');
-      doc.text('Total (Kyat)', 370, y + 2);
-      doc.text('FOC (Kyat)', 370, y + 14);
-      doc.text('Net (Kyat)', 370, y + 26);
-      doc.font('Helvetica');
-      doc.text(d.parts_total || '', 460, y + 2);
-      doc.text(d.parts_foc || '', 460, y + 14);
-      doc.text(d.parts_net || '', 460, y + 26);
-      y += 40;
+    y = w.sectionTitle('PARTS', y);
+    const partHeaders = ['No', 'Parts', 'Descriptions', 'Unit Price', 'Qty', 'Amount(Kyat)'];
+    const partWidths = [30, 90, 140, 80, 50, 95];
+    const partRows = (d.parts || []).slice(0, 5).map((p, i) => [i + 1, p.name || '', p.description || '', p.unit_price || '', p.qty || '', p.amount || '']);
+    while (partRows.length < 5) partRows.push([partRows.length + 1, '', '', '', '', '']);
+    y = w.drawTable(partHeaders, partRows, ML, y, partWidths);
 
-      y = drawSectionTitle(doc, 'FEE CHARGES', y);
-      const feeHeaders = ['No', 'Fees', 'Descriptions', 'Per day fee', 'Days', 'Amount(Kyat)'];
-      const feeWidths = [30, 120, 120, 80, 50, 95];
-      const feeLabels = ['Service Fees', 'Transportation Fees', 'Costs of meal', 'Accommodation Fees', 'Other Fee'];
-      const feeRows = feeLabels.map((label, i) => {
-        const fd = (d.fees || [])[i] || {};
-        return [i + 1, label, fd.description || '', fd.per_day || '', fd.days || '', fd.amount || ''];
-      });
-      y = drawTable(doc, feeHeaders, feeRows, 50, y, feeWidths);
+    w.text('Total (Kyat)', 370, y + 2, { bold: true, size: 7 });
+    w.text('FOC (Kyat)', 370, y - 10, { bold: true, size: 7 });
+    w.text('Net (Kyat)', 370, y - 22, { bold: true, size: 7 });
+    w.text(d.parts_total || '', 460, y + 2, { size: 7 });
+    w.text(d.parts_foc || '', 460, y - 10, { size: 7 });
+    w.text(d.parts_net || '', 460, y - 22, { size: 7 });
+    y -= 36;
 
-      doc.fontSize(7).font('Helvetica-Bold');
-      doc.text('Total (Kyat)', 370, y + 2);
-      doc.text('FOC (Kyat)', 370, y + 14);
-      doc.text('Net (Kyat)', 370, y + 26);
-      doc.text('Grand Total (Kyat)', 350, y + 38);
-      doc.font('Helvetica');
-      doc.text(d.fee_total || '', 460, y + 2);
-      doc.text(d.fee_foc || '', 460, y + 14);
-      doc.text(d.fee_net || '', 460, y + 26);
-      doc.font('Helvetica-Bold').text(d.grand_total || '', 460, y + 38);
-      y += 56;
-
-      doc.font('Helvetica').fontSize(7).text('By Word:', 50, y);
-      doc.text(d.grand_total_word || '', 100, y);
-      y += 14;
-
-      doc.fontSize(7).font('Helvetica-Bold').text('Environmental Condition(Humidity, Dust, Electricity, etc.)', 50, y);
-      drawCheckbox(doc, 'Good', d.env_condition?.toLowerCase() === 'good', 370, y);
-      drawCheckbox(doc, 'Fair', d.env_condition?.toLowerCase() === 'fair', 420, y);
-      drawCheckbox(doc, 'Poor', d.env_condition?.toLowerCase() === 'poor', 470, y);
-      y += 16;
-
-      doc.moveTo(50, y).lineTo(545, y).stroke(); y += 10;
-      doc.fontSize(8).font('Helvetica-Bold');
-      doc.text('Authorized Engineer', 50, y);
-      doc.text('Customer/ In Charge', 310, y);
-      y += 16;
-      doc.font('Helvetica');
-      doc.text('Signature -', 50, y); doc.text('Signature -', 310, y);
-      y += 12;
-      doc.text('Name -', 50, y); doc.text('Name -', 310, y);
-      y += 12;
-      doc.text('Designation -', 50, y); doc.text('Designation -', 310, y);
-
-      doc.fontSize(5).font('Helvetica-Oblique').text('Copyright documents to Engineer Department and administration office of Ever Glory Co.,ltd.', 50, doc.page.height - 40, { align: 'center', width: 495 });
+    y = w.sectionTitle('FEE CHARGES', y);
+    const feeHeaders = ['No', 'Fees', 'Descriptions', 'Per day fee', 'Days', 'Amount(Kyat)'];
+    const feeWidths = [30, 120, 120, 80, 50, 95];
+    const feeLabels = ['Service Fees', 'Transportation Fees', 'Costs of meal', 'Accommodation Fees', 'Other Fee'];
+    const feeRows = feeLabels.map((label, i) => {
+      const fd = (d.fees || [])[i] || {};
+      return [i + 1, label, fd.description || '', fd.per_day || '', fd.days || '', fd.amount || ''];
     });
+    y = w.drawTable(feeHeaders, feeRows, ML, y, feeWidths);
 
+    w.text('Total (Kyat)', 370, y + 2, { bold: true, size: 7 });
+    w.text('FOC (Kyat)', 370, y - 10, { bold: true, size: 7 });
+    w.text('Net (Kyat)', 370, y - 22, { bold: true, size: 7 });
+    w.text(d.fee_total || '', 460, y + 2, { size: 7 });
+    w.text(d.fee_foc || '', 460, y - 10, { size: 7 });
+    w.text(d.fee_net || '', 460, y - 22, { size: 7 });
+    y -= 36;
+
+    w.text('Grand Total (Kyat)', 350, y, { bold: true, size: 7 });
+    w.text(d.grand_total || '', 460, y, { bold: true, size: 7 });
+    y -= 12;
+    w.text('By Word:', ML, y, { size: 7 });
+    w.text(d.grand_total_word || '', ML + 50, y, { size: 7 });
+    y -= 14;
+
+    w.text('Environmental Condition(Humidity, Dust, Electricity, etc.)', ML, y, { bold: true, size: 7 });
+    w.drawCheckbox('Good', d.env_condition?.toLowerCase() === 'good', 370, y);
+    w.drawCheckbox('Fair', d.env_condition?.toLowerCase() === 'fair', 420, y);
+    w.drawCheckbox('Poor', d.env_condition?.toLowerCase() === 'poor', 470, y);
+    y -= 16;
+
+    const sigY3 = y - 4;
+    w.page.drawLine({ start: { x: ML, y: sigY3 + 4 }, end: { x: PAGE_W - MR, y: sigY3 + 4 }, thickness: 1 });
+    w.text('Authorized Engineer', ML, sigY3, { bold: true, size: 8 });
+    w.text('Customer/ In Charge', 310, sigY3, { bold: true, size: 8 });
+    w.text('Signature -', ML, sigY3 - 16, { size: 8 });
+    w.text('Signature -', 310, sigY3 - 16, { size: 8 });
+    w.text('Name -', ML, sigY3 - 28, { size: 8 });
+    w.text('Name -', 310, sigY3 - 28, { size: 8 });
+    w.text('Designation -', ML, sigY3 - 40, { size: 8 });
+    w.text('Designation -', 310, sigY3 - 40, { size: 8 });
+
+    w.text(COMPANY.footer, ML, 40, { italic: true, size: 5 });
+
+    const pdfBytes = await w.getBuffer();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename=field_service_report.pdf');
-    res.send(pdf);
+    res.send(Buffer.from(pdfBytes));
   } catch (err) {
     console.error('Field Service PDF error:', err);
-    res.status(500).json({ success: false, message: 'PDF generation failed: ' + (err.message || 'unknown') });
+    res.status(500).json({ success: false, message: 'PDF generation failed: ' + err.message });
   }
 });
 
