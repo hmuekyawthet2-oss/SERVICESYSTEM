@@ -62,7 +62,7 @@ async function initDatabase() {
           ssl: { rejectUnauthorized: false },
           max: 20,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: process.env.VERCEL === '1' ? 5000 : 15000,
+          connectionTimeoutMillis: process.env.VERCEL === '1' ? 15000 : 15000,
         }
       : {
           host: process.env.DB_HOST || 'localhost',
@@ -487,29 +487,33 @@ const mockPool = {
 };
 
 // ── Initialize (non-blocking, so Vercel cold start isn't blocked) ──
-const _initPromise = initDatabase();
+let _initDone = false;
+const _initPromise = initDatabase().then(() => { _initDone = true; }).catch(() => { _initDone = true; });
+
+// ── Wait for DB to be ready (with generous timeout on Vercel) ──
+async function waitForDb() {
+  if (_initDone) return;
+  const timeout = process.env.VERCEL === '1' ? 10000 : 3000;
+  await Promise.race([
+    _initPromise,
+    new Promise(resolve => setTimeout(resolve, timeout)),
+  ]);
+}
 
 // ── Export ────────────────────────────────────────────────────
 module.exports = {
   query: async (sql, params) => {
-    // Wait for first init attempt to finish before using real pool
-    if (_initPromise && !useMock && pool) {
-      // Don't block forever — race with a short timeout
-      await Promise.race([
-        _initPromise.catch(() => {}),
-        new Promise(resolve => setTimeout(resolve, 2000)),
-      ]);
-    }
+    await waitForDb();
     if (useMock || !pool) return mockQuery(sql, params);
-    return pool.query(sql, params);
+    try {
+      return await pool.query(sql, params);
+    } catch (err) {
+      console.error('Query failed, falling back to mock:', err.message);
+      return mockQuery(sql, params);
+    }
   },
   connect: async () => {
-    if (_initPromise && !useMock && pool) {
-      await Promise.race([
-        _initPromise.catch(() => {}),
-        new Promise(resolve => setTimeout(resolve, 2000)),
-      ]);
-    }
+    await waitForDb();
     if (useMock || !pool) return mockPool.connect();
     return pool.connect();
   },

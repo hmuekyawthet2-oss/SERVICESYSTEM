@@ -26,13 +26,21 @@ const PORT = parseInt(process.env.PORT, 10) || 3001;
 
 // ── Middleware ─────────────────────────────────────────────────
 app.use(helmet());
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? [
+      ...(process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean),
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '',
+      process.env.SITE_URL || '',
+    ].filter(Boolean)
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean)
-    : ['http://localhost:3000', 'http://localhost:5173'],
+  origin: allowedOrigins.length > 0 ? allowedOrigins : true,
   credentials: true,
 }));
-app.use(morgan('dev'));
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+}
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
