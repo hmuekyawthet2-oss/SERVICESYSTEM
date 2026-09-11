@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { exportApi, machinesApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { FileText, CheckCircle, Download, ArrowLeft, ArrowRight, Search, X } from 'lucide-react';
+import { FileText, CheckCircle, Download, ArrowLeft, ArrowRight, Search, X, Printer, FileDown } from 'lucide-react';
 
 const FORM_TYPES = [
   { key: 'installation', label: 'Installation & Commissioning Report', docNo: 'EG-RE-ME-001-00' },
@@ -109,6 +109,28 @@ export default function FormsPage() {
     finally { setLoading(false); }
   };
 
+  const handlePrint = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/forms/${formType}/pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(formData),
+      });
+      if (!res.ok) throw new Error('Failed to generate PDF');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.onload = () => { printWindow.print(); };
+      } else {
+        toast.error('Pop-up blocked. Please allow pop-ups for this site.');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Print failed');
+    }
+  };
+
   if (!canExport) return <div className="max-w-4xl mx-auto py-12 text-center"><FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" /><h2 className="text-lg font-semibold text-gray-600">Access Denied</h2></div>;
 
   return (
@@ -130,8 +152,8 @@ export default function FormsPage() {
       {step === 0 && (
         <div>
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Service Forms</h1>
-          <p className="text-sm text-gray-500 mb-6">Select a form type to generate a PDF report</p>
-          <div className="grid gap-4">
+          <p className="text-sm text-gray-500 mb-6">Select a form type to generate a PDF report, or download a blank form to fill manually</p>
+          <div className="grid gap-4 mb-8">
             {FORM_TYPES.map(f => (
               <button key={f.key} onClick={() => startForm(f.key)} className="flex items-center gap-4 p-5 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-md transition-all text-left group">
                 <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition"><FileText className="w-6 h-6 text-blue-600" /></div>
@@ -139,6 +161,23 @@ export default function FormsPage() {
                 <ArrowRight className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transition" />
               </button>
             ))}
+          </div>
+
+          <div className="border-t border-gray-200 pt-6">
+            <h2 className="text-lg font-semibold text-gray-700 mb-1">Download Blank Forms</h2>
+            <p className="text-xs text-gray-400 mb-4">Download empty form templates to fill manually (print or write)</p>
+            <div className="grid gap-3">
+              {FORM_TYPES.map(f => (
+                <button key={f.key} onClick={async () => {
+                  try { await exportApi.blankFormPdf(f.key); toast.success(`Blank ${f.label} downloaded!`); }
+                  catch (err) { toast.error(err.message || 'Download failed'); }
+                }} className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 hover:border-gray-300 transition-all text-left group">
+                  <div className="w-10 h-10 bg-white border border-gray-200 rounded-lg flex items-center justify-center group-hover:bg-green-50 transition"><FileDown className="w-5 h-5 text-gray-500 group-hover:text-green-600" /></div>
+                  <div className="flex-1"><h3 className="text-sm font-medium text-gray-700">{f.label}</h3><p className="text-xs text-gray-400">Blank template — {f.docNo}</p></div>
+                  <Download className="w-4 h-4 text-gray-300 group-hover:text-green-500 transition" />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -187,6 +226,7 @@ export default function FormsPage() {
           </div>
           <div className="flex justify-end gap-3 mt-6">
             <button onClick={() => setStep(1)} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Edit Again</button>
+            <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"><Printer size={16} /> Print</button>
             <button onClick={handleFinalConfirm} disabled={loading} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"><Download size={16} /> {loading ? 'Generating...' : '2nd Confirm — Export PDF'}</button>
           </div>
         </div>
@@ -196,7 +236,18 @@ export default function FormsPage() {
         <div className="text-center py-12">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">PDF Generated Successfully!</h2>
-          <button onClick={() => { setStep(0); setFormType(''); setFormData({}); }} className="mt-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Create Another Form</button>
+          <p className="text-sm text-gray-500 mb-6">Choose what to do next</p>
+          <div className="flex justify-center gap-3 flex-wrap">
+            <button onClick={handleFinalConfirm} className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700">
+              <Download size={16} /> Download PDF Again
+            </button>
+            <button onClick={handlePrint} className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+              <Printer size={16} /> Print PDF
+            </button>
+            <button onClick={() => { setStep(0); setFormType(''); setFormData({}); }} className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
+              <FileText size={16} /> Create Another Form
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -208,12 +259,17 @@ export default function FormsPage() {
 // ═══════════════════════════════════════════════════════════════
 function PdfHeader({ docNo }) {
   return (
-    <div style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: '6px', marginBottom: '6px' }}>
-      <div style={{ fontSize: '15px', fontWeight: 'bold', letterSpacing: '1px' }}>{COMPANY.name}</div>
-      <div style={{ fontSize: '8px', color: '#333', lineHeight: '1.3' }}>{COMPANY.addr1}</div>
-      <div style={{ fontSize: '8px', color: '#333', lineHeight: '1.3' }}>{COMPANY.addr2}</div>
-      <div style={{ fontSize: '8px', color: '#333', lineHeight: '1.3' }}>{COMPANY.tel}</div>
-      <div style={{ fontSize: '8px', color: '#333', lineHeight: '1.3' }}>{COMPANY.email} &nbsp;&nbsp; {COMPANY.web}</div>
+    <div style={{ position: 'relative', borderBottom: '2px solid #000', paddingBottom: '6px', marginBottom: '6px' }}>
+      <div style={{ position: 'absolute', left: 0, top: 0 }}>
+        <img src="/hand.png" alt="Logo" style={{ width: '48px', height: '48px', objectFit: 'contain' }} />
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '15px', fontWeight: 'bold', letterSpacing: '1px', color: '#cc0000' }}>{COMPANY.name}</div>
+        <div style={{ fontSize: '8px', color: '#333', lineHeight: '1.3' }}>{COMPANY.addr1}</div>
+        <div style={{ fontSize: '8px', color: '#333', lineHeight: '1.3' }}>{COMPANY.addr2}</div>
+        <div style={{ fontSize: '8px', color: '#333', lineHeight: '1.3' }}>{COMPANY.tel}</div>
+        <div style={{ fontSize: '8px', color: '#333', lineHeight: '1.3' }}>{COMPANY.email} &nbsp;&nbsp; {COMPANY.web}</div>
+      </div>
     </div>
   );
 }
@@ -222,7 +278,7 @@ function PdfDocLine({ docNo, title }) {
   return (
     <div style={{ fontSize: '8px', color: '#666', display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
       <span>Document No: {docNo}</span>
-      <span>{COMPANY.hotline}</span>
+      <span style={{ color: '#cc0000', fontWeight: 'bold' }}>{COMPANY.hotline}</span>
       <span>Page 1 of 1</span>
     </div>
   );

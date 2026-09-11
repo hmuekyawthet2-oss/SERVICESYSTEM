@@ -437,4 +437,19 @@ export const exportApi = {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   },
+  async blankFormPdf(type) {
+    const res = await fetch(`${API_BASE}/forms/blank/${type}`, {
+      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    });
+    if (!res.ok) throw new Error('Failed to download blank form');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `blank_${type}_form.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
 };
